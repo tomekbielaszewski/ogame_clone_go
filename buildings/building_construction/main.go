@@ -13,7 +13,7 @@ func main() {
 		log.Printf("Received message: %s", i)
 	})
 
-	for {
+	for i := 0; i < 10; i++ {
 		log.Println("Sending message...")
 		queue.Send("dupa")
 		time.Sleep(500 * time.Millisecond)

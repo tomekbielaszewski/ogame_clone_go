@@ -63,6 +63,7 @@ func (q *queue) Consume(consumer consume) {
 }
 
 func (q *queue) Close() {
+	log.Println("Closing connection")
 	q.channel.Close()
 	q.connection.Close()
 }
