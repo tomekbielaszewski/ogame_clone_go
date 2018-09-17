@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/streadway/amqp"
 	"log"
-	"reflect"
+	"time"
 )
 
 type queue struct {
@@ -15,15 +15,15 @@ type queue struct {
 	channel      *amqp.Channel
 }
 
+type consume func(string)
+
 func NewQueue(url string, qName string) *queue {
 	q := new(queue)
-
 	q.url = url
 	q.name = qName
 
-	q.errorChannel = make(chan *amqp.Error)
 	q.connect()
-	go q.reconnect()
+	go q.reconnector()
 
 	return q
 }
@@ -38,28 +38,68 @@ func (q *queue) Send(message string) {
 			ContentType: "text/plain",
 			Body:        []byte(message),
 		})
-	if err != nil {
-		//q.errorChannel <- err
-		log.Println(reflect.TypeOf(err))
+	logError("Sending message to queue failed", err)
+}
+
+func (q *queue) Consume(consumer consume) {
+	log.Println("Registering consumer...")
+	msgs, err := q.channel.Consume(
+		q.name, // queue
+		"",     // consumer
+		true,   // auto-ack
+		false,  // exclusive
+		false,  // no-local
+		false,  // no-wait
+		nil,    // args
+	)
+	logError("Consuming messages from queue failed", err)
+	log.Println("Consumer registered! Processing messages...")
+
+	go func() {
+		for msg := range msgs {
+			consumer(string(msg.Body[:]))
+		}
+	}()
+}
+
+func (q *queue) Close() {
+	q.channel.Close()
+	q.connection.Close()
+}
+
+func (q *queue) reconnector() {
+	for {
+		err := <-q.errorChannel
+		logError("Reconnecting after connection closed", err)
+
+		q.connect()
 	}
 }
 
 func (q *queue) connect() {
-	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
-	if err != nil {
-		//q.errorChannel <- err
-		log.Println(reflect.TypeOf(err))
-	}
-	q.connection = conn
+	for {
+		log.Printf("Connecting to rabbitmq on %s\n", q.url)
+		conn, err := amqp.Dial(q.url)
+		if err == nil {
+			q.connection = conn
+			q.errorChannel = make(chan *amqp.Error)
+			q.connection.NotifyClose(q.errorChannel)
 
-	ch, err := conn.Channel()
-	if err != nil {
-		//q.errorChannel <- err
-		log.Println(reflect.TypeOf(err))
-	}
-	q.channel = ch
+			log.Println("Connection established!")
 
-	_, err = q.channel.QueueDeclare(
+			q.openChannel()
+			q.declareQueue()
+
+			return
+		}
+
+		logError("Connection to rabbitmq failed. Retrying in 1 sec... ", err)
+		time.Sleep(1000 * time.Millisecond)
+	}
+}
+
+func (q *queue) declareQueue() {
+	_, err := q.channel.QueueDeclare(
 		q.name, // name
 		false,  // durable
 		false,  // delete when unused
@@ -67,18 +107,17 @@ func (q *queue) connect() {
 		false,  // no-wait
 		nil,    // arguments
 	)
-	if err != nil {
-		//q.errorChannel <- err
-		log.Println(reflect.TypeOf(err))
-	}
+	logError("Queue declaration failed", err)
 }
 
-func (q *queue) reconnect() {
-	for {
-		var err = <-q.errorChannel
-		if err != nil {
-			log.Printf("Error occured %s\nReconnecting to rabbitmq...", err)
-			q.connect()
-		}
+func (q *queue) openChannel() {
+	channel, err := q.connection.Channel()
+	logError("Opening channel failed", err)
+	q.channel = channel
+}
+
+func logError(message string, err error) {
+	if err != nil {
+		log.Printf("%s: %s", message, err)
 	}
 }
