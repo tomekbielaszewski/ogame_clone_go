@@ -1,8 +1,8 @@
 package utils
 
 import (
-	"log"
 	"github.com/streadway/amqp"
+	"log"
 	"time"
 )
 
@@ -13,14 +13,18 @@ type queue struct {
 	errorChannel chan *amqp.Error
 	connection   *amqp.Connection
 	channel      *amqp.Channel
+	closed       bool
+
+	consumers []messageConsumer
 }
 
-type consume func(string)
+type messageConsumer func(string)
 
 func NewQueue(url string, qName string) *queue {
 	q := new(queue)
 	q.url = url
 	q.name = qName
+	q.consumers = make([]messageConsumer, 0)
 
 	q.connect()
 	go q.reconnector()
@@ -41,29 +45,16 @@ func (q *queue) Send(message string) {
 	logError("Sending message to queue failed", err)
 }
 
-func (q *queue) Consume(consumer consume) {
+func (q *queue) Consume(consumer messageConsumer) {
 	log.Println("Registering consumer...")
-	msgs, err := q.channel.Consume(
-		q.name, // queue
-		"",     // consumer
-		true,   // auto-ack
-		false,  // exclusive
-		false,  // no-local
-		false,  // no-wait
-		nil,    // args
-	)
-	logError("Consuming messages from queue failed", err)
+	deliveries, err := q.registerQueueConsumer()
 	log.Println("Consumer registered! Processing messages...")
-
-	go func() {
-		for msg := range msgs {
-			consumer(string(msg.Body[:]))
-		}
-	}()
+	q.executeMessageConsumer(err, consumer, deliveries, false)
 }
 
 func (q *queue) Close() {
 	log.Println("Closing connection")
+	q.closed = true
 	q.channel.Close()
 	q.connection.Close()
 }
@@ -71,9 +62,12 @@ func (q *queue) Close() {
 func (q *queue) reconnector() {
 	for {
 		err := <-q.errorChannel
-		logError("Reconnecting after connection closed", err)
+		if !q.closed {
+			logError("Reconnecting after connection closed", err)
 
-		q.connect()
+			q.connect()
+			q.recoverConsumers()
+		}
 	}
 }
 
@@ -117,9 +111,46 @@ func (q *queue) openChannel() {
 	q.channel = channel
 }
 
+func (q *queue) registerQueueConsumer() (<-chan amqp.Delivery, error) {
+	msgs, err := q.channel.Consume(
+		q.name, // queue
+		"",     // messageConsumer
+		true,   // auto-ack
+		false,  // exclusive
+		false,  // no-local
+		false,  // no-wait
+		nil,    // args
+	)
+	logError("Consuming messages from queue failed", err)
+	return msgs, err
+}
+
+func (q *queue) executeMessageConsumer(err error, consumer messageConsumer, deliveries <-chan amqp.Delivery, isRecovery bool) {
+	if err == nil {
+		if !isRecovery {
+			q.consumers = append(q.consumers, consumer)
+		}
+		go func() {
+			for delivery := range deliveries {
+				consumer(string(delivery.Body[:]))
+			}
+		}()
+	}
+}
+
+func (q *queue) recoverConsumers() {
+	for i := range q.consumers {
+		var consumer = q.consumers[i]
+
+		log.Println("Recovering consumer...")
+		msgs, err := q.registerQueueConsumer()
+		log.Println("Consumer recovered! Continuing message processing...")
+		q.executeMessageConsumer(err, consumer, msgs, true)
+	}
+}
+
 func logError(message string, err error) {
 	if err != nil {
 		log.Printf("%s: %s", message, err)
 	}
 }
-
