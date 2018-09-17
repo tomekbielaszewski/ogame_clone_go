@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 	"time"
-	"github.com/tomekbielaszewski/ogame_clone_go/src/utilstils"
+	"github.com/tomekbielaszewski/ogame_clone_go/src/utils"
 )
 
 func main() {
