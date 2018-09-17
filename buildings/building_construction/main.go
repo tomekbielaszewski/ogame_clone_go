@@ -4,12 +4,19 @@ import (
 	"fmt"
 	"github.com/streadway/amqp"
 	"log"
+	"time"
 )
 
 func main() {
-	newQueue := NewQueue("localhost:5436", "hello")
+	newQueue := NewQueue("amqp://guest:guest@localhost:5672/", "hello")
 	newQueue.Send("dupa")
 
+	for {
+		log.Println("sending..")
+		newQueue.Send("dupa")
+		time.Sleep(5000 * time.Millisecond)
+	}
+	//
 	//conn := getRabbitmqConnection()
 	//defer conn.Close()
 	//
