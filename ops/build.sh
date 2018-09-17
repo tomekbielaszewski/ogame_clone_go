@@ -11,4 +11,4 @@ build_module () {
     cd $cwd
 }
 
-build_module buildings/building_construction
+build_module src/buildings/building_construction
