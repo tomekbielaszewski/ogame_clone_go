@@ -1,9 +1,10 @@
 package main
 
 import (
+	"fmt"
+	"github.com/tomekbielaszewski/ogame_clone_go/src/utils"
 	"log"
 	"time"
-	"github.com/tomekbielaszewski/ogame_clone_go/src/utils"
 )
 
 func main() {
@@ -11,12 +12,16 @@ func main() {
 	defer queue.Close()
 
 	queue.Consume(func(i string) {
-		log.Printf("Received message: %s", i)
+		log.Printf("Received message with second consumer: %s", i)
 	})
 
-	for i := 0; i < 10; i++ {
+	queue.Consume(func(i string) {
+		log.Printf("Received message with first consumer: %s", i)
+	})
+
+	for i := 0; i < 100; i++ {
 		log.Println("Sending message...")
-		queue.Send("dupa")
+		queue.Send(fmt.Sprint("dupa", i))
 		time.Sleep(500 * time.Millisecond)
 	}
 }
