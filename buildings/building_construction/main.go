@@ -3,10 +3,11 @@ package main
 import (
 	"log"
 	"time"
+	"github.com/tomekbielaszewski/ogame_clone_go/utils"
 )
 
 func main() {
-	queue := NewQueue("amqp://guest:guest@localhost:5672/", "hello")
+	queue := utils.NewQueue("amqp://guest:guest@localhost:5672/", "hello")
 	defer queue.Close()
 
 	queue.Consume(func(i string) {

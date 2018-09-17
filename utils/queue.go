@@ -1,8 +1,8 @@
-package main
+package utils
 
 import (
-	"github.com/streadway/amqp"
 	"log"
+	"github.com/streadway/amqp"
 	"time"
 )
 
@@ -122,3 +122,4 @@ func logError(message string, err error) {
 		log.Printf("%s: %s", message, err)
 	}
 }
+
