@@ -12,4 +12,3 @@ build_module () {
 }
 
 build_module buildings/building_construction
-build_module buildings/building_deconstruction
